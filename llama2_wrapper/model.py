@@ -21,8 +21,10 @@ from llama2_wrapper.types import (
 class LLAMA2_WRAPPER:
     def __init__(
         self,
-        model_path: str = "",
-        backend_type: str = "llama.cpp",
+        # model_path: str = "",
+        model_path: str = "./models/zephyr-7b-gemma-v0.1",
+        # backend_type: str = "llama.cpp",
+        backend_type: str = "transformers",
         max_tokens: int = 4000,
         load_in_8bit: bool = True,
         verbose: bool = False,
