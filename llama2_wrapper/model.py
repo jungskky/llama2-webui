@@ -17,14 +17,25 @@ from llama2_wrapper.types import (
     E_SYS,
 )
 
+# --------------------------------
+import torch
+from transformers import pipeline
+# from langchain_community.embeddings import HuggingFaceEmbeddings
+# from pymongo import MongoClient
+# import os
+# import time
+# from FlagEmbedding import FlagLLMReranker
+# --------------------------------
+
 
 class LLAMA2_WRAPPER:
     def __init__(
         self,
-        model_path: str = "",
+        model_path: str = "/content/zephyr-7b-gemma-v0.1",
         # model_path: str = "./models/zephyr-7b-gemma-v0.1",
-        backend_type: str = "llama.cpp",
-        # backend_type: str = "transformers",
+        # model_path: str = "./models/zephyr-7b-gemma-v0.1.Q8_0.gguf",
+        # backend_type: str = "llama.cpp",
+        backend_type: str = "transformers",
         max_tokens: int = 4000,
         load_in_8bit: bool = True,
         verbose: bool = False,
@@ -49,6 +60,7 @@ class LLAMA2_WRAPPER:
         self.max_tokens = max_tokens
         self.load_in_8bit = load_in_8bit
 
+        self.pipe = None
         self.model = None
         self.tokenizer = None
 
@@ -65,6 +77,7 @@ class LLAMA2_WRAPPER:
                 print("GPU CUDA not found.")
 
         self.default_llamacpp_path = "./models/llama-2-7b-chat.Q4_0.gguf"
+        # self.default_llamacpp_path = "./models/zephyr-7b-gemma-v0.1.Q8_0.gguf"
         self.default_gptq_path = "./models/Llama-2-7b-Chat-GPTQ"
         # Download default ggml/gptq model
         if self.model_path == "":
@@ -80,6 +93,11 @@ class LLAMA2_WRAPPER:
                         filename="llama-2-7b-chat.Q4_0.gguf",
                         local_dir="./models/",
                     )
+                    # hf_hub_download(
+                    #     repo_id="MaziyarPanahi/zephyr-7b-gemma-v0.1-GGUF",
+                    #     filename="zephyr-7b-gemma-v0.1.Q8_0.gguf",
+                    #     local_dir="./models/",
+                    # )
                 else:
                     print("Model exists in ./models/llama-2-7b-chat.Q4_0.gguf.")
                 self.model_path = self.default_llamacpp_path
@@ -97,8 +115,16 @@ class LLAMA2_WRAPPER:
                     print("Model exists in " + self.default_gptq_path)
                 self.model_path = self.default_gptq_path
 
+        self.init_pipe()
         self.init_tokenizer()
         self.init_model()
+
+    def init_pipe(self):
+        if self.backend_type is not BackendType.LLAMA_CPP:
+            if self.pipe is None:
+                # self.pipe = LLAMA2_WRAPPER.create_llama2_pipeline(self.model_path)
+                model_path = "/content/zephyr-7b-gemma-v0.1"
+                self.pipe = LLAMA2_WRAPPER.create_llama2_pipeline(model_path)
 
     def init_model(self):
         if self.model is None:
@@ -115,7 +141,18 @@ class LLAMA2_WRAPPER:
     def init_tokenizer(self):
         if self.backend_type is not BackendType.LLAMA_CPP:
             if self.tokenizer is None:
-                self.tokenizer = LLAMA2_WRAPPER.create_llama2_tokenizer(self.model_path)
+                model_path = "/content/zephyr-7b-gemma-v0.1"
+                self.tokenizer = LLAMA2_WRAPPER.create_llama2_tokenizer(model_path)
+
+    @classmethod
+    def create_llama2_pipeline(cls, model_path):
+        pipe = pipeline(
+            "text-generation",
+            model=model_path,
+            device_map="cuda",
+            torch_dtype=torch.bfloat16
+        )
+        return pipe
 
     @classmethod
     def create_llama2_model(
@@ -142,6 +179,7 @@ class LLAMA2_WRAPPER:
                 quantize_config=None,
             )
         elif backend_type is BackendType.TRANSFORMERS:
+        # if backend_type is BackendType.TRANSFORMERS:
             import torch
             from transformers import AutoModelForCausalLM
 
@@ -232,30 +270,55 @@ class LLAMA2_WRAPPER:
         else:
             from transformers import TextIteratorStreamer
 
-            inputs = self.tokenizer([prompt], return_tensors="pt").to("cuda")
+            # TODO : 삭제
+            # inputs = self.tokenizer([prompt], return_tensors="pt").to("cuda")
 
             streamer = TextIteratorStreamer(
                 self.tokenizer, timeout=10.0, skip_prompt=True, skip_special_tokens=True
             )
+            # TODO : 삭제
+            # generate_kwargs = dict(
+            #     inputs,
+            #     streamer=streamer,
+            #     max_new_tokens=max_new_tokens,
+            #     temperature=temperature,
+            #     top_p=top_p,
+            #     top_k=top_k,
+            #     repetition_penalty=repetition_penalty,
+            #     # num_beams=1,
+            # )
+
+            # max_new_tokens = 512
+            messages = [
+                {
+                    "role": "system",
+                    "content": "",  # Model not yet trained for follow this
+                },
+                {"role": "user", "content": prompt},
+            ]
             generate_kwargs = dict(
-                inputs,
+                text_inputs=messages,
                 streamer=streamer,
                 max_new_tokens=max_new_tokens,
+                do_sample=True,
                 temperature=temperature,
                 top_p=top_p,
                 top_k=top_k,
                 repetition_penalty=repetition_penalty,
-                # num_beams=1,
+                stop_sequence="<|im_end|>",
             )
             generate_kwargs = (
                 generate_kwargs if kwargs is None else {**generate_kwargs, **kwargs}
             )
-            t = Thread(target=self.model.generate, kwargs=generate_kwargs)
+            # TODO : 삭제
+            # t = Thread(target=self.model.generate, kwargs=generate_kwargs)
+            t = Thread(target=self.pipe, kwargs=generate_kwargs)
             t.start()
 
             outputs = []
             for text in streamer:
                 outputs.append(text)
+                print(text, end="")
                 yield "".join(outputs)
 
     def run(
