@@ -20,18 +20,19 @@ from llama2_wrapper.types import (
 # --------------------------------
 import torch
 from transformers import pipeline
-# from langchain_community.embeddings import HuggingFaceEmbeddings
-# from pymongo import MongoClient
-# import os
-# import time
-# from FlagEmbedding import FlagLLMReranker
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from pymongo import MongoClient
+import os
+import time
+from FlagEmbedding import FlagLLMReranker
 # --------------------------------
+from .util import get_answer_by_embedding, embeddings, make_prompt_of_qas_list, get_nodong_qa
 
 
 class LLAMA2_WRAPPER:
     def __init__(
         self,
-        model_path: str = "/content/zephyr-7b-gemma-v0.1",
+        model_path: str = "",
         # model_path: str = "./models/zephyr-7b-gemma-v0.1",
         # model_path: str = "./models/zephyr-7b-gemma-v0.1.Q8_0.gguf",
         # backend_type: str = "llama.cpp",
@@ -117,7 +118,7 @@ class LLAMA2_WRAPPER:
 
         self.init_pipe()
         self.init_tokenizer()
-        self.init_model()
+        # self.init_model()
 
     def init_pipe(self):
         if self.backend_type is not BackendType.LLAMA_CPP:
@@ -142,7 +143,7 @@ class LLAMA2_WRAPPER:
         if self.backend_type is not BackendType.LLAMA_CPP:
             if self.tokenizer is None:
                 model_path = "/content/zephyr-7b-gemma-v0.1"
-                self.tokenizer = LLAMA2_WRAPPER.create_llama2_tokenizer(model_path)
+                self.tokenizer = LLAMA2_WRAPPER.create_llama2_tokenizer(self.model_path)
 
     @classmethod
     def create_llama2_pipeline(cls, model_path):
@@ -287,6 +288,17 @@ class LLAMA2_WRAPPER:
             #     repetition_penalty=repetition_penalty,
             #     # num_beams=1,
             # )
+
+            # -----------------------------------------------
+            # make prompt
+
+            nodong_qa = get_nodong_qa()
+            # search by embedding
+            question, answer, url, score, qas_list, qas_list_all = get_answer_by_embedding(embeddings, nodong_qa, prompt)
+
+            max_new_tokens = 512
+            prompt = make_prompt_of_qas_list(prompt, qas_list, max_new_tokens)
+            # -----------------------------------------------
 
             # max_new_tokens = 512
             messages = [
